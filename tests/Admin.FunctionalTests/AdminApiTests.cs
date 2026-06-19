@@ -28,4 +28,29 @@ public sealed class AdminApiTests : IClassFixture<AdminApiFixture>
         Assert.NotNull(body);
         Assert.Equal("ok", body.Status);
     }
+
+    [Fact]
+    public async Task MeReturnsUnauthorizedWithoutAdminPrincipal()
+    {
+        var httpClient = _webApplicationFactory.CreateDefaultClient();
+
+        var response = await httpClient.GetAsync("/api/admin/me", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MeReturnsAdministratorForAuthorizedRequest()
+    {
+        var httpClient = _webApplicationFactory.CreateDefaultClient();
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/admin/me");
+        request.Headers.Add(AdminAutoAuthorizeMiddleware.AdminHeader, "true");
+
+        var response = await httpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<AdminUser>(TestContext.Current.CancellationToken);
+        Assert.NotNull(body);
+        Assert.Contains("Administrator", body.Roles);
+    }
 }

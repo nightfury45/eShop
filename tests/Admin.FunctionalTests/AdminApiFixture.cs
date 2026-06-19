@@ -1,6 +1,7 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Admin.FunctionalTests;
 
@@ -32,8 +33,18 @@ public sealed class AdminApiFixture : WebApplicationFactory<Program>, IAsyncLife
             config.AddInMemoryCollection(new Dictionary<string, string>
             {
                 { $"ConnectionStrings:{Postgres.Resource.Name}", _postgresConnectionString },
+                // Satisfy AddDefaultAuthentication; no real token is validated in tests — the
+                // AdminAutoAuthorizeMiddleware injects the principal instead.
+                { "Identity:Url", "https://identity.test" },
+                { "Identity:Audience", "admin" },
             });
         });
+
+        builder.ConfigureServices(services =>
+        {
+            services.AddSingleton<IStartupFilter, AdminAutoAuthorizeStartupFilter>();
+        });
+
         return base.CreateHost(builder);
     }
 
