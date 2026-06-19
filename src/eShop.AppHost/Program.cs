@@ -16,6 +16,7 @@ var catalogDb = postgres.AddDatabase("catalogdb");
 var identityDb = postgres.AddDatabase("identitydb");
 var orderDb = postgres.AddDatabase("orderingdb");
 var webhooksDb = postgres.AddDatabase("webhooksdb");
+var adminDb = postgres.AddDatabase("admindb");
 
 var launchProfileName = ShouldUseHttpForEndpoints() ? "http" : "https";
 
@@ -75,6 +76,16 @@ var webApp = builder.AddProject<Projects.WebApp>("webapp", launchProfileName)
     .WithReference(rabbitMq).WaitFor(rabbitMq)
     .WaitFor(identityApi)
     .WithEnvironment("IdentityUrl", identityEndpoint);
+
+// Admin Dashboard (BFF + React/Vite SPA)
+var adminApi = builder.AddProject<Projects.Admin_API>("admin-api")
+    .WithReference(adminDb).WaitFor(adminDb)
+    .WithHttpHealthCheck("/health");
+
+builder.AddViteApp("admin-spa", "../Admin.WebApp")
+    .WithReference(adminApi).WaitFor(adminApi)
+    .WithNpm()
+    .WithExternalHttpEndpoints();
 
 // set to true if you want to use OpenAI
 bool useOpenAI = false;
