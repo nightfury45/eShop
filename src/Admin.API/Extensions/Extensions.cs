@@ -14,6 +14,7 @@ public static class Extensions
     {
         builder.AddNpgsqlDbContext<AdminDbContext>("admindb");
         builder.AddNpgsqlDbContext<AnalyticsDbContext>("adminanalyticsdb");
+        builder.Services.AddHostedService<AdminDbInitializer>();
         builder.Services.AddHostedService<AnalyticsDbInitializer>();
 
         // Validate JWTs issued by Identity.API (reads Identity:Url + Identity:Audience).
@@ -39,5 +40,10 @@ public static class Extensions
         // Catalog is anonymous for reads — no token propagation needed for enrichment.
         builder.Services.AddHttpClient<ICatalogEnricher, CatalogEnricher>(client =>
             client.BaseAddress = new Uri("https+http://catalog-api"));
+
+        // Product-management aggregation: reads/writes Catalog.API and records dashboard audit + events.
+        builder.Services.AddHttpClient<IProductCatalogClient, ProductCatalogClient>(client =>
+            client.BaseAddress = new Uri("https+http://catalog-api"));
+        builder.Services.AddScoped<IProductCatalogService, ProductCatalogService>();
     }
 }
