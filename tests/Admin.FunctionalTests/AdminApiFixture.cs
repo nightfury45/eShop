@@ -33,6 +33,11 @@ public sealed class AdminApiFixture : WebApplicationFactory<Program>, IAsyncLife
             config.AddInMemoryCollection(new Dictionary<string, string>
             {
                 { $"ConnectionStrings:{Postgres.Resource.Name}", _postgresConnectionString },
+                // Point the analytics (OLAP) context at the same test database; EnsureCreated adds its tables.
+                { "ConnectionStrings:adminanalyticsdb", _postgresConnectionString },
+                // The event bus connects on a background thread, so a broker is not required for these
+                // tests; a dummy connection string just satisfies the Aspire RabbitMQ client registration.
+                { "ConnectionStrings:eventbus", "amqp://localhost:5672" },
                 // Satisfy AddDefaultAuthentication; no real token is validated in tests — the
                 // AdminAutoAuthorizeMiddleware injects the principal instead.
                 { "Identity:Url", "https://identity.test" },

@@ -47,3 +47,60 @@ export async function getMe(accessToken: string, signal?: AbortSignal): Promise<
   }
   return (await res.json()) as AdminUser;
 }
+
+// ---- Analytics (Sales) ----
+
+export interface KpiValue {
+  value: number;
+  deltaPercent: number;
+  spark: number[];
+}
+
+export interface RevenuePoint {
+  date: string;
+  current: number;
+  previous: number;
+}
+
+export interface CategorySlice {
+  category: string;
+  revenue: number;
+}
+
+export interface ProductRow {
+  productId: number;
+  name: string;
+  category: string;
+  units: number;
+  revenue: number;
+  sharePercent: number;
+}
+
+export interface AnalyticsSummary {
+  periodDays: number;
+  revenue: KpiValue;
+  orders: KpiValue;
+  averageOrderValue: KpiValue;
+  units: KpiValue;
+  revenueSeries: RevenuePoint[];
+  topCategories: CategorySlice[];
+  topProducts: ProductRow[];
+}
+
+export type AnalyticsPeriod = "7d" | "30d" | "90d";
+
+/** Fetches the Sales Analytics summary for a period from the secured BFF endpoint. */
+export async function getAnalyticsSummary(
+  accessToken: string,
+  period: AnalyticsPeriod,
+  signal?: AbortSignal,
+): Promise<AnalyticsSummary> {
+  const res = await fetch(`/api/admin/analytics/summary?period=${encodeURIComponent(period)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Analytics summary failed with status ${res.status}`);
+  }
+  return (await res.json()) as AnalyticsSummary;
+}

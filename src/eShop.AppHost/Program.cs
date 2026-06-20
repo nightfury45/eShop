@@ -17,6 +17,7 @@ var identityDb = postgres.AddDatabase("identitydb");
 var orderDb = postgres.AddDatabase("orderingdb");
 var webhooksDb = postgres.AddDatabase("webhooksdb");
 var adminDb = postgres.AddDatabase("admindb");
+var adminAnalyticsDb = postgres.AddDatabase("adminanalyticsdb");
 
 var launchProfileName = ShouldUseHttpForEndpoints() ? "http" : "https";
 
@@ -80,6 +81,9 @@ var webApp = builder.AddProject<Projects.WebApp>("webapp", launchProfileName)
 // Admin Dashboard (BFF + React/Vite SPA)
 var adminApi = builder.AddProject<Projects.Admin_API>("admin-api")
     .WithReference(adminDb).WaitFor(adminDb)
+    .WithReference(adminAnalyticsDb).WaitFor(adminAnalyticsDb)
+    .WithReference(rabbitMq).WaitFor(rabbitMq)
+    .WithReference(catalogApi)
     .WithHttpHealthCheck("/health")
     .WithEnvironment("Identity__Url", identityEndpoint)
     .WaitFor(identityApi);
