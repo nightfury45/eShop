@@ -3,9 +3,10 @@ import { AuthProvider } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
 import { getAdminConfig, type AdminClientConfig } from "@/lib/api";
 
-// After the OIDC redirect completes, strip the code/state query params from the URL.
+// After the OIDC redirect completes, drop the code/state params and land on the app root
+// (the router then redirects to /dashboard).
 function onSigninCallback() {
-  window.history.replaceState({}, document.title, window.location.pathname);
+  window.history.replaceState({}, document.title, "/");
 }
 
 /**
