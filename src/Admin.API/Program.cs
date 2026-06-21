@@ -19,5 +19,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapAdminApi();
+app.MapAnalyticsApi();
+app.MapProductsApi();
 
 app.Run();

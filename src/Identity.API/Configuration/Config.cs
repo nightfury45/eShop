@@ -10,6 +10,7 @@
                 new ApiResource("orders", "Orders Service"),
                 new ApiResource("basket", "Basket Service"),
                 new ApiResource("webhooks", "Webhooks registration Service"),
+                new ApiResource("admin", "Admin Dashboard Service"),
             };
         }
 
@@ -22,6 +23,7 @@
                 new ApiScope("orders", "Orders Service"),
                 new ApiScope("basket", "Basket Service"),
                 new ApiScope("webhooks", "Webhooks registration Service"),
+                new ApiScope("admin", "Admin Dashboard Service"),
             };
         }
 
@@ -185,6 +187,43 @@
                     {
                         "webhooks"
                     }
+                },
+                new Client
+                {
+                    ClientId = "adminspa",
+                    ClientName = "eShop Admin Dashboard SPA",
+                    AllowedGrantTypes = GrantTypes.Code,
+                    // Public SPA client: no secret, PKCE-protected, tokens delivered to the browser.
+                    RequireClientSecret = false,
+                    RequirePkce = true,
+                    AllowAccessTokensViaBrowser = true,
+                    RequireConsent = false,
+                    AllowOfflineAccess = true,
+                    AlwaysIncludeUserClaimsInIdToken = true,
+                    ClientUri = $"{configuration["AdminSpaClient"]}",
+                    RedirectUris =
+                    {
+                        $"{configuration["AdminSpaClient"]}/callback",
+                        $"{configuration["AdminSpaClient"]}/"
+                    },
+                    PostLogoutRedirectUris =
+                    {
+                        $"{configuration["AdminSpaClient"]}"
+                    },
+                    AllowedCorsOrigins =
+                    {
+                        $"{configuration["AdminSpaClient"]}"
+                    },
+                    AllowedScopes =
+                    {
+                        IdentityServerConstants.StandardScopes.OpenId,
+                        IdentityServerConstants.StandardScopes.Profile,
+                        IdentityServerConstants.StandardScopes.OfflineAccess,
+                        "admin",
+                        "orders"
+                    },
+                    AccessTokenLifetime = 60*60*2, // 2 hours
+                    IdentityTokenLifetime= 60*60*2 // 2 hours
                 }
             };
         }
