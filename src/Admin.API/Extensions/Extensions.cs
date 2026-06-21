@@ -1,6 +1,8 @@
+using eShop.Admin.API.IntegrationEvents;
 using eShop.Admin.API.IntegrationEvents.EventHandling;
 using eShop.Admin.API.IntegrationEvents.Events;
 using eShop.Admin.API.Services;
+using eShop.IntegrationEventLogEF.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 public static class Extensions
@@ -41,9 +43,17 @@ public static class Extensions
         builder.Services.AddHttpClient<ICatalogEnricher, CatalogEnricher>(client =>
             client.BaseAddress = new Uri("https+http://catalog-api"));
 
+        // Transactional outbox (admindb): outbound admin-action events are persisted atomically with the
+        // dashboard's audit rows, then published by AdminIntegrationEventService.
+        builder.Services.AddTransient<IIntegrationEventLogService, IntegrationEventLogService<AdminDbContext>>();
+        builder.Services.AddTransient<IAdminIntegrationEventService, AdminIntegrationEventService>();
+
         // Product-management aggregation: reads/writes Catalog.API and records dashboard audit + events.
         builder.Services.AddHttpClient<IProductCatalogClient, ProductCatalogClient>(client =>
             client.BaseAddress = new Uri("https+http://catalog-api"));
         builder.Services.AddScoped<IProductCatalogService, ProductCatalogService>();
+
+        // Inventory aggregation + stock adjustment (shares the Catalog client and the outbox).
+        builder.Services.AddScoped<IInventoryService, InventoryService>();
     }
 }

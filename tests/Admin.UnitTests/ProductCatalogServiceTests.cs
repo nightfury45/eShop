@@ -1,10 +1,9 @@
 using eShop.Admin.API.Infrastructure;
+using eShop.Admin.API.IntegrationEvents;
 using eShop.Admin.API.IntegrationEvents.Events;
 using eShop.Admin.API.Services;
-using eShop.EventBus.Abstractions;
 using eShop.EventBus.Events;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace eShop.Admin.UnitTests;
 
@@ -17,7 +16,7 @@ public class ProductCatalogServiceTests
             .Options);
 
     private static CatalogItemDetail Item(int id, string name, decimal price, int stock, int type = 1, int brand = 1, int restock = 10) =>
-        new(id, name, "desc", price, type, brand, stock, restock, 100, null);
+        new(id, name, "desc", price, type, brand, stock, restock, 100, null, OnReorder: false);
 
     private static IProductCatalogClient ClientWith(CatalogItemDetail[] items)
     {
@@ -35,15 +34,22 @@ public class ProductCatalogServiceTests
         return client;
     }
 
-    private static ProductCatalogService NewService(IProductCatalogClient client, AdminDbContext db, IEventBus bus) =>
-        new(client, db, bus, NullLogger<ProductCatalogService>.Instance);
+    // A stand-in outbox that mirrors the real one: persisting the event also commits the tracked admin
+    // changes (the audit row), so audit assertions hold without a real transaction-capable database.
+    private static IAdminIntegrationEventService EventsThatSave(AdminDbContext db)
+    {
+        var events = Substitute.For<IAdminIntegrationEventService>();
+        events.SaveEventAndAdminContextChangesAsync(Arg.Any<IntegrationEvent>())
+            .Returns(_ => db.SaveChangesAsync());
+        return events;
+    }
 
     [TestMethod]
     public async Task ListAsync_maps_catalog_items_to_admin_products()
     {
         await using var db = NewDbContext();
         var client = ClientWith([Item(7, "Aero Runner", 129m, 412, type: 1, brand: 1)]);
-        var service = NewService(client, db, Substitute.For<IEventBus>());
+        var service = new ProductCatalogService(client, db, EventsThatSave(db));
 
         var result = await service.ListAsync(new ProductQuery(0, 10, null, null, null), default);
 
@@ -64,7 +70,7 @@ public class ProductCatalogServiceTests
             Item(2, "Low", 10m, 5, restock: 10),
             Item(3, "Out", 10m, 0, restock: 10),
         ]);
-        var service = NewService(client, db, Substitute.For<IEventBus>());
+        var service = new ProductCatalogService(client, db, EventsThatSave(db));
 
         var result = await service.ListAsync(new ProductQuery(0, 10, null, null, null), default);
 
@@ -74,12 +80,12 @@ public class ProductCatalogServiceTests
     }
 
     [TestMethod]
-    public async Task UpdateAsync_writes_audit_and_publishes_event()
+    public async Task UpdateAsync_writes_audit_and_publishes_event_through_outbox()
     {
         await using var db = NewDbContext();
         var client = ClientWith([Item(5, "Field Tote", 89m, 38, type: 1, brand: 1)]);
-        var bus = Substitute.For<IEventBus>();
-        var service = NewService(client, db, bus);
+        var events = EventsThatSave(db);
+        var service = new ProductCatalogService(client, db, events);
 
         var result = await service.UpdateAsync(
             5, new ProductUpdateRequest("Field Tote 18L", 95m, 40, CategoryId: 2, BrandId: 1, Description: "new"), "priya", default);
@@ -98,8 +104,28 @@ public class ProductCatalogServiceTests
         Assert.Contains("Price", audit.Changes);
         Assert.Contains("Category", audit.Changes);
 
-        await bus.Received(1).PublishAsync(Arg.Is<AdminProductUpdatedIntegrationEvent>(
+        // Event is saved to the outbox (atomically with the audit) and then published through it.
+        await events.Received(1).SaveEventAndAdminContextChangesAsync(Arg.Is<AdminProductUpdatedIntegrationEvent>(
             e => e.ProductId == 5 && e.OldPrice == 89m && e.NewPrice == 95m && e.Editor == "priya"));
+        await events.Received(1).PublishThroughEventBusAsync(Arg.Is<AdminProductUpdatedIntegrationEvent>(e => e.ProductId == 5));
+    }
+
+    [TestMethod]
+    public async Task UpdateAsync_preserves_on_reorder_flag_through_the_write()
+    {
+        await using var db = NewDbContext();
+        // An item that Catalog has flagged for reorder — the dashboard must not clear it on an unrelated edit.
+        var flagged = Item(8, "Trail Jacket", 219m, 4, type: 1, brand: 1) with { OnReorder = true };
+        var client = Substitute.For<IProductCatalogClient>();
+        client.GetItemAsync(8, Arg.Any<CancellationToken>()).Returns(flagged);
+        client.GetCategoriesAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<CatalogRef>>([new(1, "Footwear")]);
+        client.GetBrandsAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<CatalogRef>>([new(1, "Acme")]);
+        var service = new ProductCatalogService(client, db, EventsThatSave(db));
+
+        await service.UpdateAsync(
+            8, new ProductUpdateRequest("Trail Jacket II", 219m, 4, CategoryId: 1, BrandId: 1, Description: "x"), "priya", default);
+
+        await client.Received(1).UpdateItemAsync(Arg.Is<CatalogItemDetail>(i => i.OnReorder), Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -108,30 +134,15 @@ public class ProductCatalogServiceTests
         await using var db = NewDbContext();
         var client = Substitute.For<IProductCatalogClient>();
         client.GetItemAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(default(CatalogItemDetail));
-        var bus = Substitute.For<IEventBus>();
-        var service = NewService(client, db, bus);
+        var events = EventsThatSave(db);
+        var service = new ProductCatalogService(client, db, events);
 
         var result = await service.UpdateAsync(
             404, new ProductUpdateRequest("Ghost", 1m, 1, 1, 1, null), "priya", default);
 
         Assert.IsNull(result);
         Assert.AreEqual(0, db.ProductAudits.Count());
-        await bus.DidNotReceive().PublishAsync(Arg.Any<IntegrationEvent>());
-    }
-
-    [TestMethod]
-    public async Task UpdateAsync_swallows_publish_failures_after_persisting_audit()
-    {
-        await using var db = NewDbContext();
-        var client = ClientWith([Item(9, "Trail Jacket", 219m, 12)]);
-        var bus = Substitute.For<IEventBus>();
-        bus.PublishAsync(Arg.Any<IntegrationEvent>()).Returns(Task.FromException(new InvalidOperationException("broker down")));
-        var service = NewService(client, db, bus);
-
-        var result = await service.UpdateAsync(
-            9, new ProductUpdateRequest("Trail Jacket", 199m, 12, 1, 1, "x"), "priya", default);
-
-        Assert.IsNotNull(result);
-        Assert.AreEqual(1, db.ProductAudits.Count());
+        await events.DidNotReceive().SaveEventAndAdminContextChangesAsync(Arg.Any<IntegrationEvent>());
+        await events.DidNotReceive().PublishThroughEventBusAsync(Arg.Any<IntegrationEvent>());
     }
 }

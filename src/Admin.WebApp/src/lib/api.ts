@@ -197,3 +197,83 @@ export async function updateProduct(
   }
   return (await res.json()) as AdminProduct;
 }
+
+// ---- Inventory ----
+
+export interface InventoryItem {
+  id: number;
+  name: string;
+  sku: string;
+  onHand: number;
+  reorderThreshold: number;
+  status: ProductStatus;
+  price: number;
+}
+
+export interface InventorySummary {
+  totalSkus: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  inventoryValue: number;
+}
+
+export interface InventoryResult {
+  items: InventoryItem[];
+  pageIndex: number;
+  pageSize: number;
+  totalItems: number;
+  summary: InventorySummary;
+}
+
+export interface InventoryQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  lowStockOnly?: boolean;
+}
+
+export interface StockAdjustmentRequest {
+  newOnHand: number;
+  reason: string;
+}
+
+/** Fetches a page of inventory rows plus store-wide KPIs from the secured BFF endpoint. */
+export async function getInventory(
+  accessToken: string,
+  query: InventoryQuery,
+  signal?: AbortSignal,
+): Promise<InventoryResult> {
+  const params = new URLSearchParams();
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.pageSize !== undefined) params.set("pageSize", String(query.pageSize));
+  if (query.search) params.set("search", query.search);
+  if (query.lowStockOnly) params.set("lowStockOnly", "true");
+
+  const res = await fetch(`/api/admin/inventory?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Inventory request failed with status ${res.status}`);
+  }
+  return (await res.json()) as InventoryResult;
+}
+
+/** Adjusts a product's on-hand stock through the secured BFF endpoint, returning the updated row. */
+export async function adjustStock(
+  accessToken: string,
+  id: number,
+  body: StockAdjustmentRequest,
+  signal?: AbortSignal,
+): Promise<InventoryItem> {
+  const res = await fetch(`/api/admin/inventory/${id}/adjust`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Stock adjustment failed with status ${res.status}`);
+  }
+  return (await res.json()) as InventoryItem;
+}
