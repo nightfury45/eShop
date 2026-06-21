@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens — generated from writing-room/drafts/eshop-admin-tokens.json (hex -> HSL).
+ * Mapped onto shadcn/ui CSS variables. Warm monochrome canvas, green accent, hairline borders.
+ */
+@layer base {
+  :root {
+    --background: 45 17% 95%; /* canvas #f5f4f1 */
+    --foreground: 240 8% 9%; /* ink-900 #16161a */
+
+    --card: 0 0% 100%; /* surface #ffffff */
+    --card-foreground: 240 8% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 8% 9%;
+
+    --primary: 149 85% 26%; /* accent #0a7c42 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 60 17% 98%; /* surface-2 #fafaf8 */
+    --secondary-foreground: 240 8% 9%;
+
+    --muted: 60 17% 98%; /* surface-2 */
+    --muted-foreground: 240 4% 35%; /* ink-600 #56565e */
+
+    --accent: 145 33% 93%; /* accent-tint #e7f3ec */
+    --accent-foreground: 149 85% 26%;
+
+    --destructive: 0 72% 51%; /* negative #dc2626 */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 43 12% 89%; /* hairline #e6e4df */
+    --input: 43 12% 89%;
+    --ring: 149 85% 26%; /* accent */
+
+    --radius: 0.5rem; /* 8px (tokens radius.lg) */
+
+    /* Extra semantic tokens carried from Figma. */
+    --positive: 142 72% 29%; /* #15803d */
+    --positive-tint: 145 33% 93%; /* #e7f3ec */
+    --warning: 26 90% 37%; /* #b45309 */
+    --warning-tint: 35 75% 94%; /* #fbf1e3 */
+    --ink-400: 240 4% 62%; /* #9a9aa2 */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}

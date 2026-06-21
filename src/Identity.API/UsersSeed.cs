@@ -1,8 +1,10 @@
 ﻿
 namespace eShop.Identity.API;
 
-public class UsersSeed(ILogger<UsersSeed> logger, UserManager<ApplicationUser> userManager) : IDbSeeder<ApplicationDbContext>
+public class UsersSeed(ILogger<UsersSeed> logger, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager) : IDbSeeder<ApplicationDbContext>
 {
+    public const string AdministratorRole = "Administrator";
+
     public async Task SeedAsync(ApplicationDbContext context)
     {
         var alice = await userManager.FindByNameAsync("alice");
@@ -92,6 +94,63 @@ public class UsersSeed(ILogger<UsersSeed> logger, UserManager<ApplicationUser> u
             if (logger.IsEnabled(LogLevel.Debug))
             {
                 logger.LogDebug("bob already exists");
+            }
+        }
+
+        if (!await roleManager.RoleExistsAsync(AdministratorRole))
+        {
+            await roleManager.CreateAsync(new IdentityRole(AdministratorRole));
+        }
+
+        var admin = await userManager.FindByNameAsync("admin");
+
+        if (admin == null)
+        {
+            admin = new ApplicationUser
+            {
+                UserName = "admin",
+                Email = "admin@eshop.com",
+                EmailConfirmed = true,
+                CardHolderName = "Priya Admin",
+                CardNumber = "XXXXXXXXXXXX0000",
+                CardType = 1,
+                City = "Redmond",
+                Country = "U.S.",
+                Expiration = "12/30",
+                Id = Guid.NewGuid().ToString(),
+                LastName = "Admin",
+                Name = "Priya",
+                PhoneNumber = "1234567890",
+                ZipCode = "98052",
+                State = "WA",
+                Street = "1 Admin Way",
+                SecurityNumber = "000"
+            };
+
+            var result = await userManager.CreateAsync(admin, "Pass123$");
+
+            if (!result.Succeeded)
+            {
+                throw new Exception(result.Errors.First().Description);
+            }
+
+            await userManager.AddToRoleAsync(admin, AdministratorRole);
+
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.LogDebug("admin created");
+            }
+        }
+        else
+        {
+            if (!await userManager.IsInRoleAsync(admin, AdministratorRole))
+            {
+                await userManager.AddToRoleAsync(admin, AdministratorRole);
+            }
+
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.LogDebug("admin already exists");
             }
         }
     }
