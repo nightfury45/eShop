@@ -1,4 +1,4 @@
-import type { AdminProduct, ProductRow } from "@/lib/api";
+import type { AdminProduct, InventoryItem, ProductRow } from "@/lib/api";
 
 function escapeCsv(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -9,6 +9,30 @@ const statusLabels: Record<AdminProduct["status"], string> = {
   LowStock: "Low stock",
   OutOfStock: "Out of stock",
 };
+
+const inventoryStatusLabels: Record<InventoryItem["status"], string> = {
+  Active: "In stock",
+  LowStock: "Low stock",
+  OutOfStock: "Out of stock",
+};
+
+/** Builds a CSV string of the inventory table (used by the Inventory Export action). */
+export function buildInventoryCsv(rows: InventoryItem[]): string {
+  const header = ["Product", "SKU", "On hand", "Reorder point", "Status", "Stock value"];
+  const lines = rows.map((r) =>
+    [
+      r.name,
+      r.sku,
+      String(r.onHand),
+      String(r.reorderThreshold),
+      inventoryStatusLabels[r.status],
+      (r.price * r.onHand).toFixed(2),
+    ]
+      .map(escapeCsv)
+      .join(","),
+  );
+  return [header.join(","), ...lines].join("\n");
+}
 
 /** Builds a CSV string of the catalog product table (used by the Products Export action). */
 export function buildCatalogCsv(rows: AdminProduct[]): string {

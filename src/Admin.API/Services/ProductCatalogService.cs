@@ -1,5 +1,6 @@
 using eShop.Admin.API.Infrastructure;
 using eShop.Admin.API.Infrastructure.Products;
+using eShop.Admin.API.IntegrationEvents;
 using eShop.Admin.API.IntegrationEvents.Events;
 
 namespace eShop.Admin.API.Services;
@@ -56,8 +57,7 @@ public interface IProductCatalogService
 public sealed class ProductCatalogService(
     IProductCatalogClient catalog,
     AdminDbContext dbContext,
-    IEventBus eventBus,
-    ILogger<ProductCatalogService> logger) : IProductCatalogService
+    IAdminIntegrationEventService integrationEvents) : IProductCatalogService
 {
     public async Task<AdminProductsResult> ListAsync(ProductQuery query, CancellationToken cancellationToken)
     {
@@ -110,7 +110,8 @@ public sealed class ProductCatalogService(
 
         await catalog.UpdateItemAsync(updated, cancellationToken);
 
-        // Durable audit trail in admindb — the dashboard's record of who changed what.
+        // Durable audit trail in admindb — the dashboard's record of who changed what — saved atomically
+        // with the outbound integration event through the transactional outbox.
         var changes = DescribeChanges(existing, updated);
         dbContext.ProductAudits.Add(new ProductAuditEntry
         {
@@ -125,28 +126,15 @@ public sealed class ProductCatalogService(
             Changes = changes,
             TimestampUtc = DateTime.UtcNow,
         });
-        await dbContext.SaveChangesAsync(cancellationToken);
 
-        await PublishUpdatedAsync(id, existing, updated, editor);
+        var integrationEvent = new AdminProductUpdatedIntegrationEvent(
+            id, updated.Name, editor, existing.Price, updated.Price);
+        await integrationEvents.SaveEventAndAdminContextChangesAsync(integrationEvent);
+        await integrationEvents.PublishThroughEventBusAsync(integrationEvent);
 
         var categoryNames = (await catalog.GetCategoriesAsync(cancellationToken)).ToDictionary(c => c.Id, c => c.Name);
         var brandNames = (await catalog.GetBrandsAsync(cancellationToken)).ToDictionary(b => b.Id, b => b.Name);
         return Map(updated, categoryNames, brandNames);
-    }
-
-    private async Task PublishUpdatedAsync(int id, CatalogItemDetail before, CatalogItemDetail after, string editor)
-    {
-        // Best-effort: the admindb audit row above is the durable record. A broker outage must not fail
-        // the administrator's save, so a publish failure is logged rather than propagated.
-        try
-        {
-            await eventBus.PublishAsync(new AdminProductUpdatedIntegrationEvent(
-                id, after.Name, editor, before.Price, after.Price));
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to publish AdminProductUpdatedIntegrationEvent for product {ProductId}", id);
-        }
     }
 
     private static string DescribeChanges(CatalogItemDetail before, CatalogItemDetail after)

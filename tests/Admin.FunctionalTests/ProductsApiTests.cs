@@ -17,7 +17,8 @@ public sealed class ProductsApiTests : IClassFixture<AdminApiFixture>
 
     private static CatalogItemDetail Item(int id, string name, decimal price, int stock, int restock = 10) =>
         new(id, name, $"{name} description", price, CatalogTypeId: 1, CatalogBrandId: 1,
-            AvailableStock: stock, RestockThreshold: restock, MaxStockThreshold: 100, PictureFileName: null);
+            AvailableStock: stock, RestockThreshold: restock, MaxStockThreshold: 100, PictureFileName: null,
+            OnReorder: false);
 
     [Fact]
     public async Task ListReturnsUnauthorizedWithoutAdminPrincipal()

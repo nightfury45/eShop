@@ -16,7 +16,11 @@ public record CatalogItemDetail(
     int AvailableStock,
     int RestockThreshold,
     int MaxStockThreshold,
-    string? PictureFileName);
+    string? PictureFileName,
+    // Round-tripped so a dashboard write (product edit or stock adjustment) preserves Catalog's reorder
+    // flag instead of clearing it — Catalog's PUT does a full SetValues replace, so any field the
+    // dashboard omits is reset to its default.
+    bool OnReorder);
 
 /// <summary>A page of catalog items plus the total count, mirroring Catalog.API's PaginatedItems.</summary>
 public record CatalogItemsPage(IReadOnlyList<CatalogItemDetail> Items, long TotalItems);
@@ -31,6 +35,13 @@ public interface IProductCatalogClient
     Task<CatalogItemsPage> GetItemsAsync(
         int pageIndex, int pageSize, string? name, int? type, int? brand, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reads the whole catalog (paging through Catalog.API up to a sane cap) so the Inventory screen can
+    /// compute store-wide KPIs and filter/paginate consistently in one place. Suited to the sample's
+    /// catalog size; a larger catalog would push this aggregation into the data store.
+    /// </summary>
+    Task<IReadOnlyList<CatalogItemDetail>> GetAllItemsAsync(CancellationToken cancellationToken);
+
     Task<CatalogItemDetail?> GetItemAsync(int id, CancellationToken cancellationToken);
 
     Task UpdateItemAsync(CatalogItemDetail item, CancellationToken cancellationToken);
@@ -42,11 +53,17 @@ public interface IProductCatalogClient
 
 public sealed class ProductCatalogClient(HttpClient httpClient) : IProductCatalogClient
 {
+    // Page size used when sweeping the whole catalog for the Inventory KPIs (Catalog clamps to 100).
+    private const int AllItemsPageSize = 100;
+
+    // Hard cap on how many products the inventory sweep will load, to bound a runaway loop.
+    private const int AllItemsMax = 5000;
+
     // Catalog.API serialization shapes (camelCase via web defaults).
     private sealed record CatalogItemDto(
         int Id, string Name, string? Description, decimal Price,
         int CatalogTypeId, int CatalogBrandId, int AvailableStock,
-        int RestockThreshold, int MaxStockThreshold, string? PictureFileName);
+        int RestockThreshold, int MaxStockThreshold, string? PictureFileName, bool OnReorder);
 
     private sealed record PaginatedItemsDto(int PageIndex, int PageSize, long Count, List<CatalogItemDto> Data);
 
@@ -82,6 +99,31 @@ public sealed class ProductCatalogClient(HttpClient httpClient) : IProductCatalo
         return new CatalogItemsPage(items, page?.Count ?? 0);
     }
 
+    public async Task<IReadOnlyList<CatalogItemDetail>> GetAllItemsAsync(CancellationToken cancellationToken)
+    {
+        var all = new List<CatalogItemDetail>();
+        for (var pageIndex = 0; all.Count < AllItemsMax; pageIndex++)
+        {
+            var page = await httpClient.GetFromJsonAsync<PaginatedItemsDto>(
+                $"/api/catalog/items?api-version=2.0&PageIndex={pageIndex}&PageSize={AllItemsPageSize}", cancellationToken);
+
+            var batch = page?.Data;
+            if (batch is null || batch.Count == 0)
+            {
+                break;
+            }
+
+            all.AddRange(batch.Select(ToDetail));
+
+            if (batch.Count < AllItemsPageSize)
+            {
+                break;
+            }
+        }
+
+        return all;
+    }
+
     public async Task<CatalogItemDetail?> GetItemAsync(int id, CancellationToken cancellationToken)
     {
         var item = await httpClient.GetFromJsonAsync<CatalogItemDto>(
@@ -114,5 +156,5 @@ public sealed class ProductCatalogClient(HttpClient httpClient) : IProductCatalo
 
     private static CatalogItemDetail ToDetail(CatalogItemDto dto) => new(
         dto.Id, dto.Name, dto.Description, dto.Price, dto.CatalogTypeId, dto.CatalogBrandId,
-        dto.AvailableStock, dto.RestockThreshold, dto.MaxStockThreshold, dto.PictureFileName);
+        dto.AvailableStock, dto.RestockThreshold, dto.MaxStockThreshold, dto.PictureFileName, dto.OnReorder);
 }

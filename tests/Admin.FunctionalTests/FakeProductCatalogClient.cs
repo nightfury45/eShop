@@ -20,6 +20,9 @@ public sealed class FakeProductCatalogClient : IProductCatalogClient
 
     public CatalogItemDetail Current(int id) => _items[id];
 
+    public Task<IReadOnlyList<CatalogItemDetail>> GetAllItemsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CatalogItemDetail>>(_items.Values.OrderBy(i => i.Name).ToList());
+
     public Task<CatalogItemsPage> GetItemsAsync(
         int pageIndex, int pageSize, string name, int? type, int? brand, CancellationToken cancellationToken)
     {
